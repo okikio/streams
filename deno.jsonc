@@ -1,0 +1,23 @@
+{
+  "name": "@okikio/streams",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./mod.ts",
+    "./split": "./split.ts",
+    "./channel": "./channel.ts",
+    "./events": "./events.ts",
+    "./utils": "./utils.ts",
+    "./stream": "./stream.ts",
+    "./types": "./types.ts"
+  },
+  "tasks": {
+    "test": "deno test -RW --allow-run=deno,bun,node,npx --clean --trace-leaks",
+    "dev": "deno task test --filter='/^\\[deno\\]/'"
+  },
+  "license": "MIT",
+  "imports": {
+    "@libs/testing": "jsr:@libs/testing@^3.0.1",
+    "@std/assert": "jsr:@std/assert@1",
+    "@std/expect": "jsr:@std/expect@^1.0.5"
+  }
+}
