@@ -1,5 +1,5 @@
-import type { EnhancedReadableStream } from "./stream.ts";
-import { enhanceReadableStream } from "./stream.ts";
+import type { MulticastReadableStream } from "./multicast.ts";
+import { createMulticastStream } from "./multicast.ts";
 
 /**
  * Creates a unidirectional communication channel built on Web Streams, allowing data to flow from one or more writers to multiple independent readers.
@@ -136,7 +136,7 @@ export function createChannel<T>(): Channel<T> {
   const sharedWriter = transformStream.writable.getWriter();
   const readableStream = transformStream.readable;
 
-  const enhancedReadableStream = enhanceReadableStream(readableStream);
+  const multicastStream = createMulticastStream(readableStream);
 
   return {
     /**
@@ -150,7 +150,7 @@ export function createChannel<T>(): Channel<T> {
      *
      * @returns A new readable stream with disposal support.
      */
-    readable: enhancedReadableStream,
+    readable: multicastStream,
 
     /**
      * Method to get the shared writer for direct writing.
@@ -168,7 +168,7 @@ export function createChannel<T>(): Channel<T> {
     async [Symbol.asyncDispose]() {
       await Promise.all([
         sharedWriter.close(), // Close the writable stream
-        enhancedReadableStream.cancel(),
+        multicastStream.cancel(),
       ]);
     },
   };
@@ -393,7 +393,7 @@ export interface Channel<T> {
    *
    * @returns A new readable stream with disposal support.
    */
-  readonly readable: EnhancedReadableStream<T>;
+  readonly readable: MulticastReadableStream<T>;
 
   /**
    * Asynchronously disposes of the channel resources using the Symbol.asyncDispose protocol.
@@ -415,7 +415,7 @@ export interface BidirectionalChannel<TRequest, TResponse> {
    */
   readonly endpointA: {
     readonly writer: WritableStreamDefaultWriter<TRequest>;
-    readonly readable: EnhancedReadableStream<TResponse>;
+    readonly readable: MulticastReadableStream<TResponse>;
   };
 
   /**
@@ -423,7 +423,7 @@ export interface BidirectionalChannel<TRequest, TResponse> {
    */
   readonly endpointB: {
     readonly writer: WritableStreamDefaultWriter<TResponse>;
-    readonly readable: EnhancedReadableStream<TRequest>;
+    readonly readable: MulticastReadableStream<TRequest>;
   };
 
   /**

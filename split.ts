@@ -1,94 +1,15 @@
-import type { EnhancedReadableStream } from "./stream.ts";
-import { createChannel } from "./channel.ts";
-
 /**
- * Splits a source ReadableStream into two separate ReadableStreams: one for valid values and one for errors encountered during stream processing.
- *
- * ### Error Handling:
- * - This function catches errors during the enqueueing of values and routes them to the error stream.
- * - Errors occurring during the transformation process will be sent to the error stream.
- * - Valid values will continue to flow into the valid stream, ensuring that processing can continue even in the presence of errors.
- *
- * ### Disposal:
- * - Each resulting stream supports multiple readers, and they will automatically handle resource cleanup once all consumers have finished reading.
- * - The channels used to manage the streams are properly disposed of when the streams are closed or no longer needed.
- *
- * @template V The type of data contained in the source stream.
- * @template E The type of errors encountered during stream processing.
- * @param source The original source ReadableStream to be split.
- * @returns An array containing two ReadableStreams:
- * - The first stream for valid values.
- * - The second stream for errors encountered during stream processing.
- *
- * @example
- * ```ts
- * import { splitStream } from "./stream.ts"
- * 
- * // Example source stream with valid values and an error
- * const sourceStream = new ReadableStream({
- *   start(controller) {
- *     controller.enqueue("Valid value 1");
- *     controller.enqueue("Valid value 2");
- *     controller.error(new Error("Something went wrong"));
- *     controller.close();
- *   }
- * });
- *
- * const [validStream, errorStream] = splitStream(sourceStream);
- *
- * // Reading from the valid stream
- * const validReader = validStream.getReader();
- * validReader.read().then(({ value }) => console.log("Valid:", value)); // Logs: "Valid value 1"
- *
- * // Reading from the error stream
- * const errorReader = errorStream.getReader();
- * errorReader.read().then(({ value }) => console.error("Error:", value)); // Logs: Error: Something went wrong
- * ```
+ * Context object to hold shared state between splitStream and readFromSource.
  */
-export function splitStream<V, E = unknown>(
-  source: ReadableStream<V>,
-):
-  & readonly [EnhancedReadableStream<V>, EnhancedReadableStream<E>]
-  & AsyncDisposable {
-  // Create channels for valid values and errors
-  const validChannel = createChannel<V>();
-  const errorChannel = createChannel<E>();
-
-  // Transformer to manage the splitting logic
-  const transformer = new TransformStream<V, E>({
-    async transform(chunk) {
-      try {
-        // Attempt to enqueue the chunk into the valid channel
-        await validChannel.getWriter().write(chunk);
-      } catch (error) {
-        // If an error occurs, enqueue the error into the error channel
-        await errorChannel.getWriter().write(error as E);
-      }
-    },
-    async flush() {
-      // Close both channels when the stream is done
-      await Promise.all([
-        validChannel[Symbol.asyncDispose](),
-        errorChannel[Symbol.asyncDispose]()
-      ]);
-    },
-  });
-
-  // Pipe the source through the transformer
-  source.pipeThrough(transformer);
-
-  // Return the two readable streams wrapped with disposables
-  return Object.assign(
-    [validChannel.readable, errorChannel.readable] as const,
-    {
-      async [Symbol.asyncDispose]() {
-        await Promise.all([
-          validChannel[Symbol.asyncDispose](),
-          errorChannel[Symbol.asyncDispose]()
-        ]);
-      },
-    },
-  );
+export interface SplitStreamContext<T, F = unknown> {
+  source: ReadableStreamDefaultReader<T | F> | null;
+  predicate: ((chunk: T | F) => boolean) | null;
+  queues: [
+    { readable: ReadableStream<T> | null, writer: WritableStreamDefaultWriter<T> | null, size: number },
+    { readable: ReadableStream<F> | null, writer: WritableStreamDefaultWriter<F> | null, size: number },
+  ];
+  readInProgress: boolean;
+  sourceDone: boolean;
 }
 
 /**
@@ -137,45 +58,154 @@ export function splitStream<V, E = unknown>(
  * oddReader.read().then(({ value }) => console.log("Odd:", value)); // Logs: 1
  * ```
  */
-export function splitByStream<T, F = unknown>(
-  source: ReadableStream<T | F>,
-  predicate: (chunk: T | F) => boolean | PromiseLike<boolean>,
+export function splitStream<T, F = unknown>(
+  sourceStream: ReadableStream<T | F>,
+  predicate: (chunk: T | F) => boolean
 ):
-  & readonly [EnhancedReadableStream<T>, EnhancedReadableStream<F>]
+  & readonly [ReadableStream<T>
+    // , ReadableStream<F>
+  ]
   & AsyncDisposable {
-  // Create channels for true and false predicate results
-  const trueChannel = createChannel<T>();
-  const falseChannel = createChannel<F>();
+  // Create TransformStreams to act as minimal queues
+  const { writable: queue1, readable: readable1 } = new TransformStream<T>();
+  const { writable: queue2, readable: readable2 } = new TransformStream<F>();
 
-  // Transformer to manage the splitting logic based on the predicate
-  const transformer = new TransformStream<T | F, T | F>({
-    async transform(chunk) {
-      // Route chunks based on the predicate
-      if (await predicate(chunk)) {
-        trueChannel.getWriter().write(chunk as T);
-      } else {
-        falseChannel.getWriter().write(chunk as F);
-      }
-    },
-    async flush() {
-      // Close both channels when the stream is done
-      await Promise.all([
-        trueChannel[Symbol.asyncDispose](),
-        falseChannel[Symbol.asyncDispose](),
-      ]);
-    },
-  });
+  const context: SplitStreamContext<T, F> = {
+    source: sourceStream.getReader(),
+    predicate,
+    queues: [
+      { readable: readable1, writer: queue1.getWriter(), size: 0 },
+      { readable: readable2, writer: queue2.getWriter(), size: 0 },
+    ],
+    readInProgress: false,
+    sourceDone: false,
+  };
 
-  // Pipe the source through the transformer
-  source.pipeThrough(transformer);
+  const trueStream = createPullStream<T, F, T>(context, { index: 0 });
+  // const falseStream = createPullStream<T, F, F>(context, { index: 1 });
 
-  // Return the two readable streams wrapped with disposables
-  return Object.assign([trueChannel.readable, falseChannel.readable] as const, {
+  return Object.assign([trueStream,
+    // falseStream
+
+  ] as const, {
     async [Symbol.asyncDispose]() {
       await Promise.all([
-        trueChannel[Symbol.asyncDispose](),
-        falseChannel[Symbol.asyncDispose](),
+        trueStream.cancel("Symbol.asyncDispose"),
+        // falseStream.cancel("Symbol.asyncDispose"),
       ]);
     },
+  })
+}
+
+function createPullStream<T, F = unknown, V = T | F>(context: SplitStreamContext<T, F>, { index: currentQueueIndex }: { index: number }): ReadableStream<V> {
+  const queue = context.queues[currentQueueIndex];
+  const readable = queue.readable as ReadableStream<V> | null;
+
+  return new ReadableStream<V>({
+    async pull(controller) {
+      if (context.sourceDone) {
+        controller.close();
+        return;
+      }
+
+      // Always trigger a read after pulling, whether we got a value or not
+      // if (!context.readInProgress && !context.sourceDone) {
+      while (queue.size === 0 && !context.sourceDone) {
+        await readFromSource(context);
+      }
+      // }
+
+      const reader = readable?.getReader();
+      try {
+        const { value, done } = await reader?.read() ?? { value: undefined, done: true, error: "Something went wrong" };
+
+        console.log({ value, done })
+        if (done) {
+          if (!context.sourceDone) {
+            // If this queue is empty but source isn't done, trigger another read
+            if (!context.readInProgress) {
+              await readFromSource(context);
+            }
+
+            return;  // Don't close the controller, wait for more data
+          }
+
+          controller.close();
+        } else {
+          controller.enqueue(value as V);
+          queue.size--;
+        }
+
+        // Always trigger a read after pulling, whether we got a value or not
+        // if (!context.readInProgress && !context.sourceDone) {
+        //   readFromSource(context);
+        // }
+      } catch (error) {
+        controller.error(error);
+      } finally {
+        reader?.releaseLock();
+      }
+    },
+    async cancel(reason) {
+      // Handle cancellation if needed
+      await readable?.cancel(reason);
+
+      const allQueuesCancelled = context.queues.every((queue, currentQueueIndex) => {
+        if ((queue?.readable as V) === readable) {
+          context.queues[currentQueueIndex].writer?.releaseLock();
+
+          context.queues[currentQueueIndex].readable = null;
+          context.queues[currentQueueIndex].writer = null;
+        }
+
+        return queue?.readable === null;
+      });
+
+      if (allQueuesCancelled && context.source) {
+        if (!context.sourceDone) {
+          await context.source?.cancel(reason);
+        }
+
+        context.source?.releaseLock();
+
+        context.sourceDone = true;
+        context.source = null;
+      }
+    }
   });
+}
+
+async function readFromSource<T, F = unknown>(context: SplitStreamContext<T, F>) {
+  const { source, predicate } = context;
+  if (context.readInProgress || context.sourceDone) return;
+
+  try {
+    while (!context.sourceDone) {
+      const { value, done } = await source?.read() ?? { value: undefined, done: true };
+      console.log({ value, done, readFromSource: true });
+
+      if (done) {
+        context.sourceDone = true;
+        await Promise.all([
+          context.queues.map((queue) => queue?.writer?.close())
+        ]);
+        break;
+      }
+
+      if (predicate?.(value)) {
+        await context.queues[0]?.writer?.write(value as T);
+        context.queues[0].size++;
+        break;
+      } else {
+        await context.queues[1]?.writer?.write(value as F);
+        context.queues[1].size++;
+        break;
+      }
+    }
+  } catch (error) {
+    console.log("Error reading from source", error);
+    await Promise.all([
+      context.queues.map((queue) => queue?.writer?.abort(error))
+    ]);
+  }
 }

@@ -5,7 +5,7 @@
  * @module
  */
 
-import type { EnhancedReadableStream } from "./stream.ts";
+import type { MulticastReadableStream } from "./multicast.ts";
 import { createChannel } from "./channel.ts";
 
 /**
@@ -128,7 +128,7 @@ export function createEventDispatcher<E extends Event = CustomEvent<unknown>>():
      *
      * @returns A new readable stream of StatusEvents.
      */
-    get events(): EnhancedReadableStream<E> {
+    get events(): MulticastReadableStream<E> {
       return channel.readable;
     },
 
@@ -287,7 +287,7 @@ export interface EventDispatcher<E extends Event = CustomEvent<unknown>> {
    *
    * @returns A new readable stream of StatusEvents.
    */
-  readonly events: EnhancedReadableStream<E>;
+  readonly events: MulticastReadableStream<E>;
 
   /**
    * Disposes of the dispatcher asynchronously, releasing resources.
