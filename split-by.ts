@@ -15,17 +15,17 @@ const sourceStream = new ReadableStream<number>({
 // Split the stream into even and odd numbers
 const [evenStream, oddStream] = splitStream<number, number>(sourceStream, num => num % 2 === 0);
 
-// const evenStreamReader = evenStream.getReader();
-// const oddStreamReader = oddStream.getReader();
+const evenStreamReader = evenStream.getReader();
+const oddStreamReader = oddStream.getReader();
 
 // Helper function to read from a stream
-async function readStream(stream: ReadableStream<number>, name: string) {
-  const reader = stream.getReader();
+async function readStream<T>(stream: ReadableStream<T> | ReadableStreamDefaultReader<T>, name: string) {
+  const reader = 'getReader' in stream ? stream?.getReader?.() : stream;
   try {
     while (true) {
       const { value, done } = await reader.read();
-      console.log({ name, value, done})
       if (done) break;
+
       console.log(`${name} received: ${value}`);
       await new Promise(resolve => setTimeout(resolve, 300));
     }
@@ -37,21 +37,42 @@ async function readStream(stream: ReadableStream<number>, name: string) {
 
 // Read from both streams concurrently
 Promise.all([
-  readStream(evenStream, "Even Stream"),
-  // readStream(oddStreamReader, "Odd Stream")
-]).then(() => console.log("All streams processed"));
+  readStream(evenStreamReader, "Even Stream"),
+  readStream(oddStreamReader, "Odd Stream")
+]).then(() => console.log("All streams processed", { evenStream, oddStream }));
 
 // Demonstrate cancellation after a delay
 setTimeout(async () => {
-  // console.log("Cancelling streams");
-  // await Promise.all([
-  //   evenStreamReader.cancel("Demo cancellation"),
-  //   oddStreamReader.cancel("Demo cancellation")
-  // ]);
-}, 2000);
+  console.log("Cancelling streams");
+  await Promise.all([
+    evenStreamReader.cancel("Demo cancellation"),
+    oddStreamReader.cancel("Demo cancellation")
+  ]);
+}, 1000);
 
-// // Use AsyncDisposable feature
+
+// Use AsyncDisposable feature
 // (async () => {
 //   await using streams = splitStream(sourceStream, num => num % 2 === 0);
+//   const [evenStream, oddStream] = streams;
+  
+//   // const evenStreamReader = evenStream.getReader();
+//   // const oddStreamReader = oddStream.getReader();
+  
+//   // Read from both streams concurrently
+//   await Promise.all([
+//     readStream(evenStream, "Even Stream"),
+//     readStream(oddStream, "Odd Stream")
+//   ]).then(() => console.log("All streams processed", { evenStream, oddStream }));
+
+//   // Demonstrate cancellation after a delay
+//   // setTimeout(async () => {
+//   //   console.log("Cancelling streams");
+//   //   await Promise.all([
+//   //     evenStreamReader.cancel("Demo cancellation"),
+//   //     oddStreamReader.cancel("Demo cancellation")
+//   //   ]);
+//   // }, 1000);
+  
 //   // ... use streams ...
 // })();

@@ -22,8 +22,6 @@ import { createChannel } from "./channel.ts";
  * broadcasting status events to multiple listeners while ensuring that all listeners receive
  * the events as they occur. For more details, see the documentation for `createChannel`.
  *
- * @see {@link createChannel} for more information on how channels are implemented and their benefits.
- *
  * ## Key Features:
  * - Allows multiple listeners to concurrently listen to status events using `for await...of`.
  * - Ensures that all listeners receive events, though their processing order may be influenced by backpressure.
