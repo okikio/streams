@@ -58,6 +58,53 @@
 
 import type { DualDisposable } from "./_types.ts";
 import { assertNotEquals } from "./_assert.ts";
+/**
+ * Polyfill for `Symbol.asyncDispose`.
+ * 
+ * This symbol is used to define an asynchronous disposal method for objects, allowing them to clean up resources asynchronously.
+ * If `Symbol.asyncDispose` is not natively available, it falls back to a custom symbol.
+ * 
+ * @example
+ * ```typescript
+ * class MyResource {
+ *   async [SymbolAsyncDispose]() {
+ *     // Asynchronous cleanup logic
+ *     await someAsyncCleanupFunction();
+ *   }
+ * }
+ * 
+ * async function useResource() {
+ *   const resource = new MyResource();
+ *   await resource[SymbolAsyncDispose]();
+ * }
+ * ```
+ */
+// @ts-expect-error Polyfill for `Symbol.asyncDispose`
+export const SymbolAsyncDispose = (Symbol.asyncDispose ??= Symbol.for("Symbol.asyncDispose"));
+
+/**
+ * Polyfill for `Symbol.dispose`.
+ * 
+ * This symbol is used to define a synchronous disposal method for objects, allowing them to clean up resources synchronously.
+ * If `Symbol.dispose` is not natively available, it falls back to a custom symbol.
+ * 
+ * @example
+ * ```typescript
+ * class MyResource {
+ *   [SymbolDispose]() {
+ *     // Synchronous cleanup logic
+ *     someSyncCleanupFunction();
+ *   }
+ * }
+ * 
+ * function useResource() {
+ *   const resource = new MyResource();
+ *   resource[SymbolDispose]();
+ * }
+ * ```
+ */
+// @ts-expect-error Polyfill for `Symbol.dispose`
+export const SymbolDispose = (Symbol.dispose ??= Symbol.for("Symbol.dispose"));
 
 /**
  * Global symbol to identify a `MulticastReadableStream` and distinguish it from a regular `ReadableStream`.

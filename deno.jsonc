@@ -16,9 +16,8 @@
   },
   "license": "MIT",
   "imports": {
-    "@libs/testing": "jsr:@libs/testing@^3.0.1",
-    "@std/assert": "jsr:@std/assert@1",
-    "@std/expect": "jsr:@std/expect@^1.0.5"
+    "@libs/testing": "jsr:@libs/testing@^4.0.1",
+    "@std/assert": "jsr:@std/assert@1"
   },
   "test:permissions": {
     "run": [

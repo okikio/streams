@@ -1,5 +1,4 @@
-import { test } from "@libs/testing";
-import { expect } from "@std/expect";
+import { test, expect } from "@libs/testing";
 
 import { createMulticastStream, ConsumerStreamReaders } from "./multicast.ts";
 import { iterableFromStream } from "./utils.ts";
@@ -23,7 +22,7 @@ function createInfiniteStream(delay = 10) {
 }
 
 // Test Case ERS1: Basic reading functionality
-test("deno")("createMulticastStream - basic reading functionality", async () => {
+test("createMulticastStream - basic reading functionality", async () => {
   // Create a simple ReadableStream emitting [1, 2, 3]
   const stream = new ReadableStream({
     start(controller) {
@@ -44,7 +43,7 @@ test("deno")("createMulticastStream - basic reading functionality", async () => 
 });
 
 // Test Case ERS2: Disposal using Symbol.asyncDispose
-test("deno")("createMulticastStream - disposal using Symbol.asyncDispose", async () => {
+test("createMulticastStream - disposal using Symbol.asyncDispose", async () => {
   const stream = new ReadableStream({
     start(controller) {
       [1, 2, 3].forEach((value) => controller.enqueue(value));
@@ -86,7 +85,7 @@ test("deno")("createMulticastStream - disposal using Symbol.asyncDispose", async
 });
 
 // Test Case ERS5: Disposing a locked stream
-test("deno")("createMulticastStream - disposing a locked stream", async () => {
+test("createMulticastStream - disposing a locked stream", async () => {
   const stream = new ReadableStream({
     start(controller) {
       [1, 2, 3].forEach((value) => controller.enqueue(value));
@@ -119,7 +118,7 @@ test("deno")("createMulticastStream - disposing a locked stream", async () => {
 });
 
 // Test Case ERS5: Disposing a locked stream
-test("deno")("createMulticastStream - recover from a disposing a locked stream and then dispose it again", async () => {
+test("createMulticastStream - recover from a disposing a locked stream and then dispose it again", async () => {
   const stream = new ReadableStream({
     start(controller) {
       [1, 2, 3].forEach((value) => controller.enqueue(value));
@@ -165,7 +164,7 @@ test("deno")("createMulticastStream - recover from a disposing a locked stream a
 
 
 // Test Case ERS5: Disposing a locked stream
-test("deno")("createMulticastStream - recover from a disposing a locked stream and then cancel it this time", async () => {
+test("createMulticastStream - recover from a disposing a locked stream and then cancel it this time", async () => {
   const stream = new ReadableStream({
     start(controller) {
       [1, 2, 3].forEach((value) => controller.enqueue(value));
@@ -218,7 +217,7 @@ test("deno")("createMulticastStream - recover from a disposing a locked stream a
 });
 
 // Test Case ERS6: Read multiple streams simultaneously
-test("deno")("createMulticastStream - read multiple streams simultaneously", async () => {
+test("createMulticastStream - read multiple streams simultaneously", async () => {
   const createStream = (id: number) => {
     return new ReadableStream({
       start(controller) {
@@ -252,7 +251,7 @@ test("deno")("createMulticastStream - read multiple streams simultaneously", asy
 });
 
 // Test Case ERS7: Consume stream using while loop with .read()
-test("deno")("createMulticastStream - consume using while loop with .read()", async () => {
+test("createMulticastStream - consume using while loop with .read()", async () => {
   const stream = new ReadableStream({
     start(controller) {
       [1, 2, 3].forEach((value) => controller.enqueue(value));
@@ -273,7 +272,7 @@ test("deno")("createMulticastStream - consume using while loop with .read()", as
 });
 
 // Test Case ERS8: Attempt to get a second reader when the stream is already locked
-test("deno")("createMulticastStream - attempt to get a second reader when locked", async () => {
+test("createMulticastStream - attempt to get a second reader when locked", async () => {
   const stream = createInfiniteStream();
 
   await using multicastStream = createMulticastStream(stream);
@@ -294,7 +293,7 @@ test("deno")("createMulticastStream - attempt to get a second reader when locked
 });
 
 // Test Case ERS9: Dispose the stream while it's being read
-test("deno")("createMulticastStream - dispose the stream while it's being read", async () => {
+test("createMulticastStream - dispose the stream while it's being read", async () => {
   const stream = createInfiniteStream(50);
   await using multicastStream = createMulticastStream(stream);
   const values: number[] = [];
@@ -321,7 +320,7 @@ test("deno")("createMulticastStream - dispose the stream while it's being read",
 });
 
 // Test Case ERS10: Attempt to have a second reader with parallel reads when the stream is already locked
-test("deno")("createMulticastStream - attempt to have a second reader with parallel reads when locked", async () => {
+test("createMulticastStream - attempt to have a second reader with parallel reads when locked", async () => {
   const stream = createInfiniteStream();
   await using multicastStream = createMulticastStream(stream);
 
@@ -350,7 +349,7 @@ test("deno")("createMulticastStream - attempt to have a second reader with paral
 });
 
 // Test Case: Complex Stream Teeing and Disposal
-test("deno")("createMulticastStream - complex teeing and disposal", async () => {
+test("createMulticastStream - complex teeing and disposal", async () => {
   // Create a source ReadableStream that emits numbers every 500ms
   const sourceStream = new ReadableStream<number>({
     start(controller) {
@@ -462,7 +461,7 @@ test("deno")("createMulticastStream - complex teeing and disposal", async () => 
 // ====
 
 // Test Case ERR1: Basic reading from enhanced reader
-test("deno")("enhanceReaderWithDisposal - basic reading functionality", async () => {
+test("enhanceReaderWithDisposal - basic reading functionality", async () => {
   const stream = new ReadableStream<number>({
     start(controller) {
       [1, 2, 3].forEach((value) => controller.enqueue(value));
@@ -485,7 +484,7 @@ test("deno")("enhanceReaderWithDisposal - basic reading functionality", async ()
 });
 
 // Test Case ERR2: Disposal using Symbol.asyncDispose
-test("deno")("enhanceReaderWithDisposal - disposal using Symbol.asyncDispose", async () => {
+test("enhanceReaderWithDisposal - disposal using Symbol.asyncDispose", async () => {
   const stream = new ReadableStream<number>({
     start(controller) {
       [1, 2, 3].forEach((value) => controller.enqueue(value));
@@ -516,7 +515,7 @@ test("deno")("enhanceReaderWithDisposal - disposal using Symbol.asyncDispose", a
   expect(stream.locked).toBe(false);
 });
 
-test("deno")("enhanceReaderWithDisposal - cancel the reader early", async () => {
+test("enhanceReaderWithDisposal - cancel the reader early", async () => {
   const stream = new ReadableStream<number>({
     start(controller) {
       [1, 2, 3].forEach((value) => controller.enqueue(value));
@@ -547,7 +546,7 @@ test("deno")("enhanceReaderWithDisposal - cancel the reader early", async () => 
   expect(stream.locked).toBe(false);
 });
 
-test("deno")("enhanceReaderWithDisposal - cancel source stream, then try getting reader", async () => {
+test("enhanceReaderWithDisposal - cancel source stream, then try getting reader", async () => {
   const stream = new ReadableStream<number>({
     start(controller) {
       [1, 2, 3].forEach((value) => controller.enqueue(value));
@@ -582,7 +581,7 @@ test("deno")("enhanceReaderWithDisposal - cancel source stream, then try getting
 });
 
 // Test Case ERR3: Multiple readers from different streams
-test("deno")("enhanceReaderWithDisposal - multiple readers from different streams", async () => {
+test("enhanceReaderWithDisposal - multiple readers from different streams", async () => {
   const createStream = (id: number) => {
     return new ReadableStream<string>({
       start(controller) {
@@ -624,7 +623,7 @@ test("deno")("enhanceReaderWithDisposal - multiple readers from different stream
 });
 
 // Test Case ERR4: Reader cancellation during read operations
-test("deno")("enhanceReaderWithDisposal - reader cancellation during read", async () => {
+test("enhanceReaderWithDisposal - reader cancellation during read", async () => {
   let timeout: ReturnType<typeof setTimeout>;
   const stream = new ReadableStream<number>({
     start(controller) {
@@ -683,7 +682,7 @@ test("deno")("enhanceReaderWithDisposal - reader cancellation during read", asyn
 });
 
 // Test Case ERR5: Dispose reader while it's in the middle of reading
-test("deno")("enhanceReaderWithDisposal - dispose reader during read", async () => {
+test("enhanceReaderWithDisposal - dispose reader during read", async () => {
   let timeout: ReturnType<typeof setTimeout>;
   const stream = new ReadableStream<number>({
     start(controller) {

@@ -1,3 +1,4 @@
+/// <reference lib="esnext" />
 /**
  * @fileoverview
  * This file provides a suite of tests for the `splitStream` function. The goal is to ensure that the splitting
@@ -26,8 +27,7 @@
  *    the output and state of the streams are as intended.
  *
  * ### Tools:
- * - `@libs/testing` for test runner.
- * - `@std/expect` for assertions.
+ * - `@libs/testing` for test runner & assertions.
  * - `splitStream` function (imported from the stream splitting module).
  * - Helper functions and stable test inputs to ensure reproducibility.
  */
@@ -55,8 +55,7 @@
  *   Each test is documented, and scenarios are traceable to ensure maintainability and clarity.
  */
 
-import { test } from "@libs/testing";
-import { expect } from "@std/expect";
+import { test, expect } from "@libs/testing";
 import { splitStream } from "./split.ts"; // Adjust path as needed
 import { iterableFromStream } from "./utils.ts"; // Helper to read entire streams easily
 
@@ -98,23 +97,73 @@ function createErrorStream<T>(values: T[]): ReadableStream<T> {
 }
 
 /**
- * Data-Driven Tests (Test Table):
+ * @test
+ * Comprehensive Data-Driven Tests (Test Table):
+ * Unified test cases supporting numeric and object-based inputs.
+ *
  * Each entry includes:
  * - name: a descriptive test name
- * - input: array of input chunks
- * - predicate: function to split chunks
+ * - input: array of input chunks (numbers or objects)
+ * - predicate: function to split input
  * - expectedFirst: expected chunks in the first stream
  * - expectedSecond: expected chunks in the second stream
  *
- * These scenarios cover normal operation, empty sources, and diverse splitting logic.
+ * Scenarios include:
+ * - Decision table testing with objects
+ * - Basic numeric splitting logic
+ * - Edge cases like empty input
+ * - Normal operations
  */
+type InputType = { type: "allowed" | "forbidden"; value: number; } | number;
+
 const testCases = [
+  // Object-based decision table cases
+  {
+    name: "All allowed",
+    input: [{type: "allowed", value: 1}, {type: "allowed", value: 2}] as Obj[],
+    predicate: (obj: Obj) => obj.type === "allowed",
+    expectedFirst: [{type: "allowed", value: 1}, {type: "allowed", value: 2}],
+    expectedSecond: []
+  },
+  {
+    name: "All forbidden",
+    input: [{type: "forbidden", value: 1}, {type: "forbidden", value: 2}] as Obj[],
+    predicate: (obj: Obj) => obj.type === "allowed",
+    expectedFirst: [],
+    expectedSecond: [{type: "forbidden", value: 1}, {type: "forbidden", value: 2}]
+  },
+  {
+    name: "Mixed types",
+    input: [
+      {type: "allowed", value: 1},
+      {type: "forbidden", value: 2},
+      {type: "allowed", value: 3},
+      {type: "forbidden", value: 4},
+    ] as Obj[],
+    predicate: (obj: Obj) => obj.type === "allowed",
+    expectedFirst: [{type: "allowed", value: 1}, {type: "allowed", value: 3}],
+    expectedSecond: [{type: "forbidden", value: 2}, {type: "forbidden", value: 4}],
+  },
+  {
+    name: "Mixed values",
+    input: [
+      {type: "allowed", value: 10},
+      {type: "forbidden", value: 20},
+      {type: "allowed", value: 30},
+      {type: "forbidden", value: 40},
+    ] as Obj[],
+    predicate: (obj: Obj) => obj.type === "allowed",
+    expectedFirst: [{type: "allowed", value: 10}, {type: "allowed", value: 30}],
+    expectedSecond: [{type: "forbidden", value: 20}, {type: "forbidden", value: 40}],
+  },
+
+  // Numeric test cases
   {
     name: "Split even/odd numbers",
-    input: [1,2,3,4],
+    input: [1, 2, 3, 4],
     predicate: (num: number) => num % 2 === 0,
-    expectedFirst: [2,4],
-    expectedSecond: [1,3]
+    expectedFirst: [2, 4],
+    expectedSecond: [1, 3]
   },
   {
     name: "Empty source",
@@ -125,31 +174,33 @@ const testCases = [
   },
   {
     name: "All chunks match predicate",
-    input: [2,4,6],
+    input: [2, 4, 6],
     predicate: (num: number) => num % 2 === 0,
-    expectedFirst: [2,4,6],
+    expectedFirst: [2, 4, 6],
     expectedSecond: []
   },
   {
     name: "No chunks match predicate",
-    input: [1,3,5],
+    input: [1, 3, 5],
     predicate: (num: number) => num % 2 === 0,
     expectedFirst: [],
-    expectedSecond: [1,3,5]
+    expectedSecond: [1, 3, 5]
   }
 ];
 
 /**
  * @testtable
- * Validate basic behavior of splitStream using various input arrays and predicates.
+ * Validate splitStream using various inputs, objects, and predicates.
  */
 for (const { name, input, predicate, expectedFirst, expectedSecond } of testCases) {
-  test("deno")( `splitStream - ${name}`, async () => {
-    const source = createArrayStream(input);
-    const [evenStream, oddStream] = splitStream(source, predicate);
+  test(`splitStream - ${name}`, async () => {
+    const source = createArrayStream(input as InputType[]);
+    const [firstStream, secondStream] = splitStream(source, predicate as ((input: InputType) => boolean));
 
-    const resultFirst = await iterableFromStream(evenStream);
-    const resultSecond = await iterableFromStream(oddStream);
+    const [resultFirst, resultSecond] = await Promise.all([
+      Array.fromAsync(iterableFromStream(firstStream)),
+      Array.fromAsync(iterableFromStream(secondStream)),
+  ]);
 
     expect(resultFirst).toEqual(expectedFirst);
     expect(resultSecond).toEqual(expectedSecond);
@@ -161,7 +212,7 @@ for (const { name, input, predicate, expectedFirst, expectedSecond } of testCase
  * Tests the behavior when the source encounters an error during reading.
  * The expected behavior: Both resulting streams should abort once the error is encountered.
  */
-test("deno")("splitStream - error in source", async () => {
+test("splitStream - error in source", async () => {
   const source = createErrorStream([1,2,3,4,5,6]);
   const [streamA, streamB] = splitStream(source, (num: number) => num > 3);
 
@@ -203,7 +254,7 @@ test("deno")("splitStream - error in source", async () => {
  * @test
  * Tests cancellation behavior: cancel one of the resulting streams early and ensure the other can still be read.
  */
-test("deno")("splitStream - cancel one resulting stream early", async () => {
+test("splitStream - cancel one resulting stream early", async () => {
   const source = createArrayStream([1,2,3,4,5]);
   const [evenStream, oddStream] = splitStream(source, (num: number) => num % 2 === 0);
 
@@ -212,7 +263,7 @@ test("deno")("splitStream - cancel one resulting stream early", async () => {
   await evenReader.cancel("No need for even numbers");
 
   // The oddStream should still provide odd values
-  const oddValues = await iterableFromStream(oddStream);
+  const oddValues = await Array.fromAsync(iterableFromStream(oddStream));
   expect(oddValues).toEqual([1,3,5]);
 });
 
@@ -220,16 +271,16 @@ test("deno")("splitStream - cancel one resulting stream early", async () => {
  * @test
  * Ensures that if we try to read from one of the streams after the source is already done, it simply closes.
  */
-test("deno")("splitStream - read after source done", async () => {
+test("splitStream - read after source done", async () => {
   const source = createArrayStream([10,11]);
   const [streamTrue, streamFalse] = splitStream(source, (num: number) => num > 10);
 
   // Read all from true stream first
-  const trueValues = await iterableFromStream(streamTrue);
+  const trueValues = await Array.fromAsync(iterableFromStream(streamTrue));
   expect(trueValues).toEqual([11]);
 
   // Source is done now. If we read from false stream afterward:
-  const falseValues = await iterableFromStream(streamFalse);
+  const falseValues = await Array.fromAsync(iterableFromStream(streamFalse));
   expect(falseValues).toEqual([10]);
 });
 
@@ -238,9 +289,10 @@ test("deno")("splitStream - read after source done", async () => {
  * Attempt multiple reads in parallel on the same resulting stream to check stability.
  * We don't want to cause deadlocks or race conditions.
  */
-test("deno")("splitStream - parallel reads on the same resulting stream", async () => {
+test("splitStream - parallel reads on the same resulting stream", async () => {
   const source = createArrayStream([0,1,2,3,4,5]);
-  const [evenStream] = splitStream(source, (num: number) => num % 2 === 0);
+  await using streams = splitStream(source, (num: number) => num % 2 === 0);
+  const [evenStream] = streams;
 
   // Attempt concurrent reads:
   const readPromise1 = iterableFromStream(evenStream);
@@ -248,7 +300,10 @@ test("deno")("splitStream - parallel reads on the same resulting stream", async 
 
   // Both attempts will read the same stream. The second will start reading after the first finishes or simultaneously.
   // Depending on the implementation, one reader might lock the stream and the other might get no data.
-  const [res1, res2] = await Promise.all([readPromise1, readPromise2]);
+  const [res1, res2] = await Promise.all([
+    Array.fromAsync(readPromise1),
+    Array.fromAsync(readPromise2),
+  ]);
 
   // At least one should have the data. Another might see an empty array due to locking rules.
   // The even numbers: [0,2,4]
@@ -266,28 +321,24 @@ test("deno")("splitStream - parallel reads on the same resulting stream", async 
  * @test
  * Test disposing of both resulting streams using Symbol.asyncDispose and ensuring cleanup.
  */
-test("deno")("splitStream - async disposal of resulting streams", async () => {
+test("splitStream - async disposal of resulting streams", async () => {
   const source = createArrayStream([5,6,7,8]);
-  const [streamA, streamB] = splitStream(source, (n: number) => n < 7);
+  const streams = splitStream(source, (n: number) => n < 7);
+  const [streamA, streamB] = streams;
 
   // Dispose both using Symbol.asyncDispose:
-  await streamA[Symbol.asyncDispose]();
-  await streamB[Symbol.asyncDispose]();
+  await streams[Symbol.asyncDispose]();
 
   // Attempt reading after disposal should fail
-  try {
-    await iterableFromStream(streamA);
-    expect(false).toBe(true); // Should not reach here
-  } catch (error) {
-    expect(error).toBeDefined();
-  }
+  await Promise.all([
+    expect(async () => {
+      await Array.fromAsync(iterableFromStream(streamA));
+    }).rejects.toThrow(),
 
-  try {
-    await iterableFromStream(streamB);
-    expect(false).toBe(true); // Should not reach here
-  } catch (error) {
-    expect(error).toBeDefined();
-  }
+    expect(async () => {
+      await Array.fromAsync(iterableFromStream(streamB));
+    }).rejects.toThrow(),
+  ]);
 });
 
 /**
@@ -301,45 +352,56 @@ test("deno")("splitStream - async disposal of resulting streams", async () => {
  * 
  * We can represent multiple conditions in a decision table:
  */
-
 interface Obj { type: "allowed" | "forbidden"; value: number; }
 
 const decisionTestCases = [
   {
     name: "All allowed",
-    input: [{type: "allowed", value:1}, {type:"allowed", value:2}] as Obj[],
+    input: [{type: "allowed", value: 1}, {type: "allowed", value: 2}] as Obj[],
     predicate: (obj: Obj) => obj.type === "allowed",
-    expectedFirst: [{type:"allowed", value:1},{type:"allowed", value:2}],
+    expectedFirst: [{type: "allowed", value: 1}, {type: "allowed", value: 2}],
     expectedSecond: []
   },
   {
     name: "All forbidden",
-    input: [{type: "forbidden", value:1}, {type:"forbidden", value:2}] as Obj[],
+    input: [{type: "forbidden", value: 1}, {type: "forbidden", value: 2}] as Obj[],
     predicate: (obj: Obj) => obj.type === "allowed",
     expectedFirst: [],
-    expectedSecond: [{type:"forbidden", value:1},{type:"forbidden", value:2}]
+    expectedSecond: [{type: "forbidden", value: 1}, {type: "forbidden", value: 2}]
   },
   {
     name: "Mixed types",
     input: [
-      {type:"allowed", value:1}, 
-      {type:"forbidden", value:2},
-      {type:"allowed", value:3},
-      {type:"forbidden", value:4},
+      {type: "allowed", value: 1},
+      {type: "forbidden", value: 2},
+      {type: "allowed", value: 3},
+      {type: "forbidden", value: 4},
     ] as Obj[],
     predicate: (obj: Obj) => obj.type === "allowed",
-    expectedFirst: [{type:"allowed", value:1},{type:"allowed", value:3}],
-    expectedSecond: [{type:"forbidden", value:2},{type:"forbidden", value:4}],
+    expectedFirst: [{type: "allowed", value: 1}, {type: "allowed", value: 3}],
+    expectedSecond: [{type: "forbidden", value: 2}, {type: "forbidden", value: 4}],
+  },
+  {
+    name: "Mixed",
+    input: [
+      {type: "allowed", value: 10},
+      {type: "forbidden", value: 20},
+      {type: "allowed", value: 30},
+      {type: "forbidden", value: 40},
+    ] as Obj[],
+    predicate: (obj: Obj) => obj.type === "allowed",
+    expectedFirst: [{type: "allowed", value: 10}, {type: "allowed", value: 30}],
+    expectedSecond: [{type: "forbidden", value: 20}, {type: "forbidden", value: 40}],
   },
 ];
 
 for (const {name, input, predicate, expectedFirst, expectedSecond} of decisionTestCases) {
-  test("deno")(`splitStream - decision table: ${name}`, async () => {
+  test(`splitStream - decision table: ${name}`, async () => {
     const source = createArrayStream(input);
     const [allowedStream, forbiddenStream] = splitStream(source, predicate);
 
-    const resAllowed = await iterableFromStream(allowedStream);
-    const resForbidden = await iterableFromStream(forbiddenStream);
+    const resAllowed = await Array.fromAsync(iterableFromStream(allowedStream));
+    const resForbidden = await Array.fromAsync(iterableFromStream(forbiddenStream));
 
     expect(resAllowed).toEqual(expectedFirst);
     expect(resForbidden).toEqual(expectedSecond);
@@ -352,11 +414,14 @@ for (const {name, input, predicate, expectedFirst, expectedSecond} of decisionTe
  * Attempt reading from one resulting stream with dynamic checks (no fixed delays) and ensure no flaky behavior.
  * We'll do this by waiting for the first chunk to appear instead of sleeping.
  */
-test("deno")("splitStream - dynamic wait (no fixed delay)", async () => {
+test("splitStream - dynamic wait (no fixed delay)", async () => {
   const source = new ReadableStream<number>({
     start(controller) {
       // Enqueue asynchronously
       setTimeout(() => controller.enqueue(42), 10);
+      queueMicrotask(() => {
+        controller.enqueue(54);
+      });
       setTimeout(() => controller.close(), 20);
     }
   });
@@ -365,87 +430,31 @@ test("deno")("splitStream - dynamic wait (no fixed delay)", async () => {
 
   // Check the 'matches' stream dynamically:
   const matchesReader = matches.getReader();
-  const result = await matchesReader.read(); 
-  // This read will wait until chunk is available (dynamic wait, no sleeps)
-  
-  expect(result.value).toBe(42);
-  expect(result.done).toBe(false);
+  const otherReader = others.getReader();
 
-  const secondRead = await matchesReader.read();
-  expect(secondRead.done).toBe(true);
+  // This read will wait until chunk is available (dynamic wait)
+  const matchesRes = await matchesReader.read(); 
+  const otherRes = await otherReader.read();
 
-  // The 'others' stream should be empty
-  const othersResult = await iterableFromStream(others);
-  expect(othersResult).toEqual([]);
+  expect(matchesRes.value).toBe(42);
+  expect(matchesRes.done).toBe(false);
+
+  expect(otherRes.value).toBe(54);
+  expect(matchesRes.done).toBe(false);
+
+  const secondMatchRead = await matchesReader.read();
+  const secondOtherRead = await otherReader.read();
+
+  expect(secondMatchRead.done).toBe(true);
+  expect(secondOtherRead.done).toBe(true);
 });
-
-/**
- * By following these comprehensive tests—using data-driven approaches, decision tables, and careful synchronization—
- * we've demonstrated how to create robust and reliable tests for `splitStream`. Each test scenario documents the
- * expected behavior, thereby improving clarity, reproducibility, and maintainability of the test suite.
- */
-
-
-/**
- * Data-driven test scenarios covering basic cases:
- * - Even/odd splitting
- * - Empty sources
- * - All true / all false predicate matches
- */
-const basicTestCases = [
-  {
-    name: "Even/Odd split with [1,2,3,4]",
-    input: [1,2,3,4],
-    predicate: (num: number) => num % 2 === 0,
-    expectedFirst: [2,4],
-    expectedSecond: [1,3]
-  },
-  {
-    name: "Empty source",
-    input: [] as number[],
-    predicate: (num: number) => num > 10,
-    expectedFirst: [] as number[],
-    expectedSecond: [] as number[]
-  },
-  {
-    name: "All chunks match predicate",
-    input: [2,4,6],
-    predicate: (num: number) => num % 2 === 0,
-    expectedFirst: [2,4,6],
-    expectedSecond: []
-  },
-  {
-    name: "No chunks match predicate",
-    input: [1,3,5],
-    predicate: (num: number) => num % 2 === 0,
-    expectedFirst: [],
-    expectedSecond: [1,3,5]
-  }
-];
-
-/**
- * @testtable
- * Validate `splitStream` with a variety of numeric inputs and predicates.
- */
-for (const { name, input, predicate, expectedFirst, expectedSecond } of basicTestCases) {
-  test("deno")(`splitStream - ${name}`, async () => {
-    const source = createArrayStream(input);
-    const [streamTrue, streamFalse] = splitStream(source, predicate);
-
-    const resultFirst = await iterableFromStream(streamTrue);
-    const resultSecond = await iterableFromStream(streamFalse);
-
-    expect(resultFirst).toEqual(expectedFirst);
-    expect(resultSecond).toEqual(expectedSecond);
-  });
-}
 
 /**
  * @test
  * Test behavior when the source errors out midway.
  * Both streams should encounter this error and stop providing new data.
  */
-test("deno")("splitStream - error in source stream", async () => {
+test("splitStream - error in source stream", async () => {
   const source = createErrorStream([1,2,3,4,5,6]);
   const [aStream, bStream] = splitStream(source, (num: number) => num > 3);
 
@@ -484,7 +493,7 @@ test("deno")("splitStream - error in source stream", async () => {
  * Cancelling one resulting stream should not prevent reading from the other.
  * Ensure that when we cancel the first stream, the second can still be read fully.
  */
-test("deno")("splitStream - cancel one stream early", async () => {
+test("splitStream - cancel one stream early", async () => {
   const source = createArrayStream([10,11,12,13,14]);
   const [gt12Stream, ltEqual12Stream] = splitStream(source, (num: number) => num > 12);
 
@@ -492,7 +501,7 @@ test("deno")("splitStream - cancel one stream early", async () => {
   const gt12Reader = gt12Stream.getReader();
   await gt12Reader.cancel("No need for values > 12");
 
-  const remainValues = await iterableFromStream(ltEqual12Stream);
+  const remainValues = await Array.fromAsync(iterableFromStream(ltEqual12Stream));
   // Values ≤ 12: [10,11,12]
   expect(remainValues).toEqual([10,11,12]);
 });
@@ -501,87 +510,17 @@ test("deno")("splitStream - cancel one stream early", async () => {
  * @test
  * Read after the source is done should just close the streams gracefully.
  */
-test("deno")("splitStream - read after source done", async () => {
+test("splitStream - read after source done", async () => {
   const source = createArrayStream([1,2]);
   const [evenStream, oddStream] = splitStream(source, (num) => num % 2 === 0);
 
   // Read even first
-  const evenVals = await iterableFromStream(evenStream);
+  const evenVals = await Array.fromAsync(iterableFromStream(evenStream));
   expect(evenVals).toEqual([2]);
 
   // Now read odd - source done, but odd should yield [1]
-  const oddVals = await iterableFromStream(oddStream);
+  const oddVals = await Array.fromAsync(iterableFromStream(oddStream));
   expect(oddVals).toEqual([1]);
-});
-
-/**
- * @test
- * Complex, object-based decision table testing:
- * Predicate splits objects by `type: "allowed"` vs `type: "forbidden"`.
- */
-interface Obj { type: "allowed" | "forbidden"; value: number; }
-
-const decisionTestCases = [
-  {
-    name: "All allowed",
-    input: [{type:"allowed", value:1},{type:"allowed", value:2}] as Obj[],
-    predicate: (obj: Obj) => obj.type === "allowed",
-    expectedFirst: [{type:"allowed", value:1},{type:"allowed", value:2}],
-    expectedSecond: []
-  },
-  {
-    name: "All forbidden",
-    input: [{type:"forbidden", value:1},{type:"forbidden", value:2}] as Obj[],
-    predicate: (obj: Obj) => obj.type === "allowed",
-    expectedFirst: [],
-    expectedSecond: [{type:"forbidden", value:1},{type:"forbidden", value:2}]
-  },
-  {
-    name: "Mixed",
-    input: [
-      {type:"allowed", value:10},
-      {type:"forbidden", value:20},
-      {type:"allowed", value:30},
-      {type:"forbidden", value:40},
-    ] as Obj[],
-    predicate: (obj: Obj) => obj.type === "allowed",
-    expectedFirst: [{type:"allowed", value:10},{type:"allowed", value:30}],
-    expectedSecond: [{type:"forbidden", value:20},{type:"forbidden", value:40}],
-  }
-];
-
-for (const {name, input, predicate, expectedFirst, expectedSecond} of decisionTestCases) {
-  test("deno")(`splitStream - decision table: ${name}`, async () => {
-    const source = createArrayStream(input);
-    const [allowedStream, forbiddenStream] = splitStream(source, predicate);
-
-    const resAllowed = await iterableFromStream(allowedStream);
-    const resForbidden = await iterableFromStream(forbiddenStream);
-
-    expect(resAllowed).toEqual(expectedFirst);
-    expect(resForbidden).toEqual(expectedSecond);
-  });
-}
-
-/**
- * @test
- * Test disposal using Symbol.asyncDispose on both resulting streams.
- * After disposal, attempts to read should fail.
- */
-test("deno")("splitStream - async disposal", async () => {
-  const source = createArrayStream([5,6]);
-  const [s1, s2] = splitStream(source, (n) => n < 6);
-
-  await s1[Symbol.asyncDispose]();
-  await s2[Symbol.asyncDispose]();
-
-  await expect(async () => {
-    await iterableFromStream(s1);
-  }).rejects.toThrow();
-
-  await expect(async () => {
-    await iterableFromStream(s2);
-  }).rejects.toThrow();
 });
 
 /**
@@ -589,7 +528,7 @@ test("deno")("splitStream - async disposal", async () => {
  * Ensuring no flakes: dynamically wait for data without fixed delays.
  * Source asynchronously enqueues a single chunk, no fixed sleeps.
  */
-test("deno")("splitStream - dynamic wait (no fixed delays)", async () => {
+test("splitStream - dynamic wait (no fixed delays)", async () => {
   const source = new ReadableStream<number>({
     start(controller) {
       // enqueue after a short async tick
@@ -602,10 +541,10 @@ test("deno")("splitStream - dynamic wait (no fixed delays)", async () => {
 
   const [matches, others] = splitStream(source, (x) => x === 42);
 
-  const matchesRes = await iterableFromStream(matches);
+  const matchesRes = await Array.fromAsync(iterableFromStream(matches));
   expect(matchesRes).toEqual([42]);
 
-  const othersRes = await iterableFromStream(others);
+  const othersRes = await Array.fromAsync(iterableFromStream(others));
   expect(othersRes).toEqual([]);
 });
 
@@ -613,16 +552,16 @@ test("deno")("splitStream - dynamic wait (no fixed delays)", async () => {
  * @test
  * Attempt reading from one stream after another stream is fully drained and ensure no conflicts or deadlocks.
  */
-test("deno")("splitStream - sequential reading of both streams", async () => {
+test("splitStream - sequential reading of both streams", async () => {
   const source = createArrayStream([10,11,12,13]);
   const [ge12Stream, lt12Stream] = splitStream(source, (n) => n >= 12);
 
   // Read ge12 first
-  const ge12Vals = await iterableFromStream(ge12Stream);
+  const ge12Vals = await Array.fromAsync(iterableFromStream(ge12Stream));
   expect(ge12Vals).toEqual([12,13]);
 
   // Now read lt12
-  const lt12Vals = await iterableFromStream(lt12Stream);
+  const lt12Vals = await Array.fromAsync(iterableFromStream(lt12Stream));
   expect(lt12Vals).toEqual([10,11]);
 });
 
